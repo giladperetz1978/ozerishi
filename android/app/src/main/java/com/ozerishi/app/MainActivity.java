@@ -23,6 +23,7 @@ public class MainActivity extends Activity {
     private static final int APP_PERMISSIONS_REQUEST = 42;
     private WebView webView;
     private SpeechRecognizer speechRecognizer;
+    private String partialSpeech = "";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -89,6 +90,12 @@ public class MainActivity extends Activity {
             });
         }
 
+        @JavascriptInterface public void stop() {
+            runOnUiThread(() -> {
+                if (speechRecognizer != null) speechRecognizer.stopListening();
+            });
+        }
+
         @JavascriptInterface public void scheduleReminder(String title, long triggerAtMillis) {
             android.app.AlarmManager alarmManager = getSystemService(android.app.AlarmManager.class);
             if (alarmManager == null || triggerAtMillis <= System.currentTimeMillis()) return;
@@ -126,18 +133,31 @@ public class MainActivity extends Activity {
             return;
         }
         if (speechRecognizer != null) speechRecognizer.destroy();
+        partialSpeech = "";
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
         speechRecognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onReadyForSpeech(Bundle params) { sendSpeechState("listening"); }
             @Override public void onBeginningOfSpeech() { sendSpeechState("listening"); }
             @Override public void onEndOfSpeech() { sendSpeechState("ended"); }
-            @Override public void onError(int error) { sendSpeechState("ended"); sendSpeechError(speechErrorMessage(error)); }
+            @Override public void onError(int error) {
+                sendSpeechState("ended");
+                if (error == SpeechRecognizer.ERROR_NO_MATCH && !partialSpeech.isEmpty()) {
+                    String result = partialSpeech;
+                    partialSpeech = "";
+                    sendSpeechResult(result);
+                    return;
+                }
+                sendSpeechError(speechErrorMessage(error));
+            }
             @Override public void onResults(Bundle results) {
                 ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 sendSpeechState("ended");
                 if (matches != null && !matches.isEmpty()) sendSpeechResult(matches.get(0));
             }
-            @Override public void onPartialResults(Bundle partialResults) { }
+            @Override public void onPartialResults(Bundle partialResults) {
+                ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                if (matches != null && !matches.isEmpty()) partialSpeech = matches.get(0);
+            }
             @Override public void onRmsChanged(float rmsdB) { }
             @Override public void onBufferReceived(byte[] buffer) { }
             @Override public void onEvent(int eventType, Bundle params) { }
@@ -146,6 +166,7 @@ public class MainActivity extends Activity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "he-IL");
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "he-IL");
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         speechRecognizer.startListening(intent);
     }

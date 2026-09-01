@@ -5,7 +5,7 @@ import './App.css'
 type AssistantData = { answer?: string; tasks: { title?: string; dueAt?: string | null; source?: string }[]; meetings: { title?: string; start?: string; end?: string | null; location?: string | null }[] }
 
 function App() {
-  const nativeWindow = window as Window & { AndroidSpeech?: { start: () => void; scheduleReminder?: (title: string, triggerAtMillis: number) => void; openWaze?: (destination: string) => void; hasMailAccess?: () => boolean; requestMailAccess?: () => void; getMailNotifications?: () => string }; receiveNativeSpeechState?: (state: string) => void; receiveNativeSpeech?: (text: string) => void; receiveNativeSpeechError?: (text: string) => void }
+  const nativeWindow = window as Window & { AndroidSpeech?: { start: () => void; stop?: () => void; scheduleReminder?: (title: string, triggerAtMillis: number) => void; openWaze?: (destination: string) => void; hasMailAccess?: () => boolean; requestMailAccess?: () => void; getMailNotifications?: () => string }; receiveNativeSpeechState?: (state: string) => void; receiveNativeSpeech?: (text: string) => void; receiveNativeSpeechError?: (text: string) => void }
   const apiUrl = import.meta.env.VITE_API_URL || (nativeWindow.AndroidSpeech ? 'http://192.168.1.249:8787' : 'http://localhost:8787')
   const [activeTab, setActiveTab] = useState('היום')
   const [activeView, setActiveView] = useState<'היום' | 'קניות' | 'Waze' | 'מתוזמנות'>('היום')
@@ -94,6 +94,11 @@ function App() {
   const askAssistant = () => {
     const nativeSpeech = nativeWindow.AndroidSpeech
     if (nativeSpeech) {
+      if (isListening) {
+        nativeSpeech.stop?.()
+        setVoiceStatus('מעבד את מה שאמרת...')
+        return
+      }
       nativeWindow.receiveNativeSpeechState = (state) => { setIsListening(state === 'listening') }
       nativeWindow.receiveNativeSpeechError = (message) => { setIsListening(false); setVoiceStatus(message) }
       nativeWindow.receiveNativeSpeech = async (question) => {
@@ -138,7 +143,7 @@ function App() {
     <main className="app-shell" dir="rtl">
       <header className="topbar"><div className="brand-mark"><Sparkles size={18} /><span>תזכירי לי</span></div><div className="topbar-actions"><button className="icon-button" aria-label="התראות"><Bell size={19} /><i /></button><button className="avatar" aria-label="הפרופיל שלך">ג</button></div></header>
       <section className="welcome-row"><div><p className="eyebrow">יום שלישי, 1 בספטמבר 2026</p><h1>בוקר טוב, גילעד</h1></div><button className="more-button" aria-label="אפשרויות נוספות"><MoreHorizontal size={22} /></button></section>
-      <section className="assistant-card"><div className="assistant-orbit"><Waves size={28} /></div><div className="assistant-copy"><span className="status-pill"><i /> העוזר שלך מוכן</span><h2>מה תרצה לדעת?</h2><p>שאל אותי על היום שלך, ואני אמצא את התשובה.</p><button className="scan-button" onClick={() => scanMailNotifications()}>סרוק התראות Outlook</button>{voiceStatus && <span className="voice-status">{voiceStatus}</span>}</div><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={askAssistant} aria-label={isListening ? 'מקשיב' : 'שאל את העוזר'}><Mic size={25} /></button></section>
+      <section className="assistant-card"><div className="assistant-orbit"><Waves size={28} /></div><div className="assistant-copy"><span className="status-pill"><i /> העוזר שלך מוכן</span><h2>מה תרצה לדעת?</h2><p>שאל אותי על היום שלך, ואני אמצא את התשובה.</p><button className="scan-button" onClick={() => scanMailNotifications()}>סרוק התראות Outlook</button>{voiceStatus && <span className="voice-status">{voiceStatus}</span>}</div><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={askAssistant} aria-label={isListening ? 'עצור והשתמש בדיבור' : 'שאל את העוזר'}><Mic size={25} /></button></section>
       <nav className="day-tabs" aria-label="ניווט לפי יום">{['היום', 'מחר', 'השבוע'].map((tab) => <button key={tab} className={activeTab === tab ? 'active' : ''} onClick={() => { setActiveTab(tab); setActiveView('היום') }}>{tab}</button>)}</nav>
       <nav className="feature-tabs" aria-label="אזורי האפליקציה">
         {(['היום', 'קניות', 'Waze', 'מתוזמנות'] as const).map((view) => <button key={view} className={activeView === view ? 'active' : ''} onClick={() => setActiveView(view)}>{view === 'מתוזמנות' ? 'תזכורות מתוזמנות' : view}</button>)}
