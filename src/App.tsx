@@ -75,8 +75,11 @@ function App() {
     if (reminderMatch) {
       const reminderText = reminderMatch[1].trim()
       const timeMatch = reminderText.match(/\s+ב(?:שעה)?[־-]?\s*(\d{1,2}(?::\d{2})?)(?:\s*(.*))?$/i)
-      const when = timeMatch ? timeMatch[1] : 'ללא שעה'
-      const cleanText = timeMatch ? (timeMatch[2] || 'תזכורת').trim() : reminderText
+      const relativeMatch = reminderText.match(/\s+(בעוד|עוד)\s+(?:(\d+)\s*)?(שניות?|שניה|דקות?|דקה|שעות?|שעה|ימים?|יום)\s*$/i)
+      const relativeAmount = relativeMatch ? Number(relativeMatch[2] || 1) : 0
+      const relativeUnit = relativeMatch?.[3].toLowerCase()
+      const when = timeMatch ? timeMatch[1] : relativeMatch ? `${relativeMatch[1]} ${relativeAmount} ${relativeUnit}` : 'ללא שעה'
+      const cleanText = timeMatch ? (timeMatch[2] || 'תזכורת').trim() : relativeMatch ? reminderText.slice(0, relativeMatch.index).trim() : reminderText
       setScheduledReminders((current) => [...current, { text: cleanText, when }])
       if (timeMatch) {
         const [hours, minutes = '0'] = timeMatch[1].split(':')
@@ -84,6 +87,9 @@ function App() {
         due.setHours(Number(hours), Number(minutes), 0, 0)
         if (due.getTime() <= Date.now()) due.setDate(due.getDate() + 1)
         nativeWindow.AndroidSpeech?.scheduleReminder?.(cleanText, due.getTime())
+      } else if (relativeMatch) {
+        const unitMilliseconds = relativeUnit?.startsWith('שנ') ? 1000 : relativeUnit?.startsWith('דק') ? 60_000 : relativeUnit?.startsWith('שע') ? 3_600_000 : 86_400_000
+        nativeWindow.AndroidSpeech?.scheduleReminder?.(cleanText, Date.now() + relativeAmount * unitMilliseconds)
       }
       setActiveView('מתוזמנות')
       setVoiceStatus(`התזכורת נקבעה${when === 'ללא שעה' ? '' : ` לשעה ${when}`}`)
