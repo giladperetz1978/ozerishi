@@ -51,6 +51,24 @@ function App() {
     if (nativeWindow.AndroidSpeech?.openWaze) nativeWindow.AndroidSpeech.openWaze(target)
     else window.location.href = `https://waze.com/ul?q=${encodeURIComponent(target)}&navigate=yes`
   }
+  const scheduleReminderWithGemini = async (reminderText: string) => {
+    setVoiceStatus('מבין את מועד התזכורת...')
+    try {
+      const response = await fetch(`${apiUrl}/api/reminder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: reminderText, now: new Date().toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) })
+      const data = await response.json()
+      if (!response.ok || !data.dueAt || !data.title) throw new Error(data.error || 'לא הצלחתי להבין את זמן התזכורת')
+      const dueAt = new Date(data.dueAt)
+      if (Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) throw new Error('Gemini החזיר זמן תזכורת שאינו בעתיד')
+      const when = dueAt.toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
+      setScheduledReminders((current) => [...current, { text: data.title, when }])
+      nativeWindow.AndroidSpeech?.scheduleReminder?.(data.title, dueAt.getTime())
+      setActiveView('מתוזמנות')
+      setVoiceStatus(data.answer || `התזכורת נקבעה ל־${when}`)
+      window.speechSynthesis?.speak(new SpeechSynthesisUtterance(data.answer || `התזכורת נקבעה ל־${when}`))
+    } catch (error) {
+      setVoiceStatus(error instanceof Error ? error.message : 'לא הצלחתי לקבוע את התזכורת')
+    }
+  }
   const handleVoiceCommand = (rawText: string) => {
     const text = rawText.trim().replace(/[.!?,;:]+/g, ' ')
     const wazeMatch = text.match(/(?:waze|wase|wazee|ways|wazeh|ווייז|וייז|וויז|ויז|navigate|ניווט)\s*(?:ל|אל)?\s*(.*)$/i)
@@ -74,25 +92,7 @@ function App() {
     const reminderMatch = text.match(/^(?:תזכיר לי|תזכורת|remind me)\s+(.+)$/i)
     if (reminderMatch) {
       const reminderText = reminderMatch[1].trim()
-      const timeMatch = reminderText.match(/\s+ב(?:שעה)?[־-]?\s*(\d{1,2}(?::\d{2})?)(?:\s*(.*))?$/i)
-      const relativeMatch = reminderText.match(/\s+(בעוד|עוד)\s+(?:(\d+)\s*)?(שניות?|שניה|דקות?|דקה|שעות?|שעה|ימים?|יום)\s*$/i)
-      const relativeAmount = relativeMatch ? Number(relativeMatch[2] || 1) : 0
-      const relativeUnit = relativeMatch?.[3].toLowerCase()
-      const when = timeMatch ? timeMatch[1] : relativeMatch ? `${relativeMatch[1]} ${relativeAmount} ${relativeUnit}` : 'ללא שעה'
-      const cleanText = timeMatch ? (timeMatch[2] || 'תזכורת').trim() : relativeMatch ? reminderText.slice(0, relativeMatch.index).trim() : reminderText
-      setScheduledReminders((current) => [...current, { text: cleanText, when }])
-      if (timeMatch) {
-        const [hours, minutes = '0'] = timeMatch[1].split(':')
-        const due = new Date()
-        due.setHours(Number(hours), Number(minutes), 0, 0)
-        if (due.getTime() <= Date.now()) due.setDate(due.getDate() + 1)
-        nativeWindow.AndroidSpeech?.scheduleReminder?.(cleanText, due.getTime())
-      } else if (relativeMatch) {
-        const unitMilliseconds = relativeUnit?.startsWith('שנ') ? 1000 : relativeUnit?.startsWith('דק') ? 60_000 : relativeUnit?.startsWith('שע') ? 3_600_000 : 86_400_000
-        nativeWindow.AndroidSpeech?.scheduleReminder?.(cleanText, Date.now() + relativeAmount * unitMilliseconds)
-      }
-      setActiveView('מתוזמנות')
-      setVoiceStatus(`התזכורת נקבעה${when === 'ללא שעה' ? '' : ` לשעה ${when}`}`)
+      void scheduleReminderWithGemini(reminderText)
       return true
     }
     return false

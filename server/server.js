@@ -91,6 +91,23 @@ function parseAssistantPayload(raw) {
   }
 }
 
+function parseReminderPayload(raw) {
+  try {
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim()
+    const parsed = JSON.parse(cleaned)
+    const dueAt = new Date(parsed.dueAt)
+    if (!String(parsed.title || '').trim() || Number.isNaN(dueAt.getTime())) throw new Error('Invalid reminder payload')
+    return { title: String(parsed.title).trim(), dueAt: dueAt.toISOString(), answer: String(parsed.answer || 'התזכורת נקבעה.') }
+  } catch {
+    throw new Error('Gemini returned an invalid reminder schedule')
+  }
+}
+
+async function parseReminder(text, now, timeZone) {
+  const raw = await gemini(`אתה מתזמן תזכורות בעברית. המר את המשפט החופשי לתזכורת אחת. השעה הנוכחית היא ${now} ואזור הזמן של המשתמש הוא ${timeZone || 'Asia/Jerusalem'}. הבן ביטויים כמו "מחר ב־8 בבוקר", "עוד דקה", "בעוד שעתיים", ו"בשישי לאוקטובר". אם נאמר תאריך בלי שעה, קבע 09:00 בבוקר באותו תאריך. אם נאמר רק יום בשבוע, בחר את המופע הקרוב של היום הזה. החזר JSON בלבד במבנה: {"title":"נוסח קצר של התזכורת בלי מילות הזמן","dueAt":"ISO-8601 כולל אזור הזמן","answer":"אישור קצר בעברית עם התאריך והשעה"}. אל תוסיף הסברים ואל תשתמש ב-Markdown. המשפט: ${text}`)
+  return parseReminderPayload(raw)
+}
+
 async function assistantAnswer(question) {
   const accessToken = await getValidAccessToken()
   if (!accessToken) throw new Error('Connect Microsoft first')
@@ -131,6 +148,12 @@ const server = http.createServer(async (req, res) => {
       const data = await readBody(req)
       if (!String(data.question || '').trim()) return json(res, 400, { error: 'Question is required' })
       return json(res, 200, await assistantAnswer(String(data.question).trim()))
+    }
+    if (req.method === 'POST' && url.pathname === '/api/reminder') {
+      const data = await readBody(req)
+      const text = String(data.text || '').trim()
+      if (!text) return json(res, 400, { error: 'Reminder text is required' })
+      return json(res, 200, await parseReminder(text, String(data.now || new Date().toISOString()), String(data.timeZone || 'Asia/Jerusalem')))
     }
     if (req.method === 'POST' && url.pathname === '/api/analyze') {
       const data = await readBody(req)

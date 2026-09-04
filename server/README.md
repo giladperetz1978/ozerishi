@@ -10,7 +10,7 @@ Planned responsibilities:
 - No send, delete, edit, or calendar-write permissions.
 
 The first API surface is `/auth/microsoft`, `/auth/microsoft/callback`, `/api/status`, and `/api/briefing`. The briefing reads Outlook through Microsoft Graph and sends the normalized data to the configured Gemini model. It never writes to Microsoft 365.
-The API surface includes `/auth/microsoft`, `/auth/microsoft/callback`, `/api/status`, `/api/briefing`, `/api/assistant`, and `/api/analyze`. These routes read data and send normalized content to Gemini; they never write to Microsoft 365. The current Android UI uses Outlook notification scanning and does not expose the OAuth login link.
+The API surface includes `/auth/microsoft`, `/auth/microsoft/callback`, `/api/status`, `/api/briefing`, `/api/assistant`, `/api/analyze`, and `/api/reminder`. The reminder route sends free-form Hebrew reminder text to Gemini and returns a normalized title plus ISO-8601 due time. These routes read data and send normalized content to Gemini; they never write to Microsoft 365. The current Android UI uses Outlook notification scanning and does not expose the OAuth login link.
 
 For Microsoft Entra ID, register a web application with the exact redirect URI from `MICROSOFT_REDIRECT_URI`, then grant delegated permissions `User.Read`, `Mail.Read`, `Calendars.Read`, and `offline_access`. Admin consent may be required by the work tenant.
 
