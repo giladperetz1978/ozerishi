@@ -6,7 +6,7 @@ type AssistantData = { answer?: string; tasks: { title?: string; dueAt?: string 
 
 function App() {
   const nativeWindow = window as Window & { AndroidSpeech?: { start: () => void; stop?: () => void; scheduleReminder?: (title: string, triggerAtMillis: number) => void; openWaze?: (destination: string) => void; hasMailAccess?: () => boolean; requestMailAccess?: () => void; getMailNotifications?: () => string }; receiveNativeSpeechState?: (state: string) => void; receiveNativeSpeech?: (text: string) => void; receiveNativeSpeechError?: (text: string) => void }
-  const apiUrl = import.meta.env.VITE_API_URL || (nativeWindow.AndroidSpeech ? 'http://192.168.1.249:8787' : 'http://localhost:8787')
+  const apiUrl = import.meta.env.VITE_API_URL || (nativeWindow.AndroidSpeech ? 'https://ozerishi.144.91.96.77.sslip.io' : 'http://localhost:8787')
   const [activeTab, setActiveTab] = useState('היום')
   const [activeView, setActiveView] = useState<'היום' | 'קניות' | 'Waze' | 'מתוזמנות'>('היום')
   const [isListening, setIsListening] = useState(false)
