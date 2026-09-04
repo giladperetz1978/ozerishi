@@ -93,18 +93,21 @@ function parseAssistantPayload(raw) {
 
 function parseReminderPayload(raw) {
   try {
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim()
-    const parsed = JSON.parse(cleaned)
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    const jsonStart = cleaned.indexOf('{')
+    const jsonEnd = cleaned.lastIndexOf('}')
+    const parsed = JSON.parse(jsonStart >= 0 && jsonEnd > jsonStart ? cleaned.slice(jsonStart, jsonEnd + 1) : cleaned)
+    if (parsed.isReminder === false) return { isReminder: false, answer: String(parsed.answer || '') }
     const dueAt = new Date(parsed.dueAt)
     if (!String(parsed.title || '').trim() || Number.isNaN(dueAt.getTime())) throw new Error('Invalid reminder payload')
-    return { title: String(parsed.title).trim(), dueAt: dueAt.toISOString(), answer: String(parsed.answer || 'התזכורת נקבעה.') }
+    return { isReminder: true, title: String(parsed.title).trim(), dueAt: dueAt.toISOString(), answer: String(parsed.answer || 'התזכורת נקבעה.') }
   } catch {
     throw new Error('Gemini returned an invalid reminder schedule')
   }
 }
 
 async function parseReminder(text, now, timeZone) {
-  const raw = await gemini(`אתה מתזמן תזכורות בעברית. המר את המשפט החופשי לתזכורת אחת. השעה הנוכחית היא ${now} ואזור הזמן של המשתמש הוא ${timeZone || 'Asia/Jerusalem'}. הבן ביטויים כמו "מחר ב־8 בבוקר", "עוד דקה", "בעוד שעתיים", ו"בשישי לאוקטובר". אם נאמר תאריך בלי שעה, קבע 09:00 בבוקר באותו תאריך. אם נאמר רק יום בשבוע, בחר את המופע הקרוב של היום הזה. החזר JSON בלבד במבנה: {"title":"נוסח קצר של התזכורת בלי מילות הזמן","dueAt":"ISO-8601 כולל אזור הזמן","answer":"אישור קצר בעברית עם התאריך והשעה"}. אל תוסיף הסברים ואל תשתמש ב-Markdown. המשפט: ${text}`)
+  const raw = await gemini(`אתה מפרש כוונת משתמש בעברית עבור אפליקציית תזכורות. קבע האם המשתמש מבקש שנזכיר לו משהו בעתיד, גם אם לא אמר במפורש "תזכיר לי". ביטויים כמו "שלא אשכח", "תזכור ש...", "תזכיר לי", "מחר אני צריך..." או משימה עם שעה/תאריך בדרך כלל הם תזכורת. אם זו לא תזכורת, החזר isReminder:false. השעה הנוכחית היא ${now} ואזור הזמן של המשתמש הוא ${timeZone || 'Asia/Jerusalem'}. הבן "מחר ב-8", "עוד דקה", "בעוד שעתיים", ויום בשבוע. אם נאמר תאריך בלי שעה, קבע 09:00 בבוקר באותו תאריך. אם נאמר רק יום בשבוע, בחר את המופע הקרוב. החזר JSON בלבד, ללא Markdown, במבנה לתזכורת: {"isReminder":true,"title":"נוסח קצר של התזכורת בלי מילות הזמן","dueAt":"ISO-8601 כולל אזור הזמן","answer":"אישור קצר בעברית עם התאריך והשעה"}; או במבנה שאינו תזכורת: {"isReminder":false,"answer":"תשובה קצרה"}. המשפט: ${text}`)
   return parseReminderPayload(raw)
 }
 

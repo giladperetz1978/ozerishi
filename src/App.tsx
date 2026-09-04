@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, CalendarDays, Check, ChevronLeft, Clock3, Mail, MapPin, Mic, MoreHorizontal, ShoppingCart, Sparkles, Volume2, Waves, Zap } from 'lucide-react'
+import { Bell, CalendarDays, Check, ChevronLeft, Clock3, MapPin, Mic, MoreHorizontal, ShoppingCart, Sparkles, Volume2, Waves } from 'lucide-react'
 import './App.css'
 
 type AssistantData = { answer?: string; tasks: { title?: string; dueAt?: string | null; source?: string }[]; meetings: { title?: string; start?: string; end?: string | null; location?: string | null }[] }
@@ -10,17 +10,14 @@ function App() {
   const [activeTab, setActiveTab] = useState('היום')
   const [activeView, setActiveView] = useState<'היום' | 'קניות' | 'Waze' | 'מתוזמנות'>('היום')
   const [isListening, setIsListening] = useState(false)
-  const [completed, setCompleted] = useState<number[]>([])
   const [voiceStatus, setVoiceStatus] = useState('')
   const [shoppingItems, setShoppingItems] = useState<string[]>(() => JSON.parse(localStorage.getItem('ozerishi-shopping') || '[]'))
   const [wazeDestinations, setWazeDestinations] = useState<string[]>(() => JSON.parse(localStorage.getItem('ozerishi-waze') || '[]'))
-  const [scheduledReminders, setScheduledReminders] = useState<{ text: string; when: string }[]>(() => JSON.parse(localStorage.getItem('ozerishi-scheduled') || '[]'))
+  const [scheduledReminders, setScheduledReminders] = useState<{ text: string; when: string }[]>([])
   const [aiTasks, setAiTasks] = useState<AssistantData['tasks']>([])
   const [aiMeetings, setAiMeetings] = useState<AssistantData['meetings']>([])
   useEffect(() => localStorage.setItem('ozerishi-shopping', JSON.stringify(shoppingItems)), [shoppingItems])
   useEffect(() => localStorage.setItem('ozerishi-waze', JSON.stringify(wazeDestinations)), [wazeDestinations])
-  useEffect(() => localStorage.setItem('ozerishi-scheduled', JSON.stringify(scheduledReminders)), [scheduledReminders])
-  const toggleTask = (id: number) => setCompleted((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   const applyAssistantData = (data: AssistantData) => {
     setAiTasks(data.tasks || [])
     setAiMeetings(data.meetings || [])
@@ -56,7 +53,9 @@ function App() {
     try {
       const response = await fetch(`${apiUrl}/api/reminder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: reminderText, now: new Date().toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) })
       const data = await response.json()
-      if (!response.ok || !data.dueAt || !data.title) throw new Error(data.error || 'לא הצלחתי להבין את זמן התזכורת')
+      if (!response.ok) throw new Error(data.error || 'לא הצלחתי לעבד את הבקשה')
+      if (data.isReminder === false) return false
+      if (!data.dueAt || !data.title) throw new Error('לא הצלחתי להבין את זמן התזכורת')
       const dueAt = new Date(data.dueAt)
       if (Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) throw new Error('Gemini החזיר זמן תזכורת שאינו בעתיד')
       const when = dueAt.toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
@@ -65,8 +64,10 @@ function App() {
       setActiveView('מתוזמנות')
       setVoiceStatus(data.answer || `התזכורת נקבעה ל־${when}`)
       window.speechSynthesis?.speak(new SpeechSynthesisUtterance(data.answer || `התזכורת נקבעה ל־${when}`))
+      return true
     } catch (error) {
       setVoiceStatus(error instanceof Error ? error.message : 'לא הצלחתי לקבוע את התזכורת')
+      return true
     }
   }
   const handleVoiceCommand = (rawText: string) => {
@@ -89,10 +90,10 @@ function App() {
       setVoiceStatus(items.length ? `נוספו ${items.length} פריטים לרשימת הקניות` : 'מצב רשימת קניות פעיל. אמור פריטים, ובין פריט לפריט אמור פלוס')
       return true
     }
-    const reminderMatch = text.match(/^(?:תזכיר לי|תזכורת|remind me)\s+(.+)$/i)
+    const reminderMatch = text.match(/^(?:תזכיר לי|תזכורת|תזכרי לי|תזכור לי|שלא אשכח|remind me)\s*(.*)$/i)
     if (reminderMatch) {
       const reminderText = reminderMatch[1].trim()
-      void scheduleReminderWithGemini(reminderText)
+      void scheduleReminderWithGemini(reminderText || text)
       return true
     }
     return false
@@ -110,6 +111,8 @@ function App() {
       nativeWindow.receiveNativeSpeech = async (question) => {
         setIsListening(false)
         if (handleVoiceCommand(question)) return
+        const interpretedAsReminder = await scheduleReminderWithGemini(question)
+        if (interpretedAsReminder) return
         setVoiceStatus('בודק את היום שלך...')
         const response = await fetch(`${apiUrl}/api/assistant`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) })
         const data = await response.json()
@@ -135,6 +138,8 @@ function App() {
         window.speechSynthesis?.speak(new SpeechSynthesisUtterance(voiceStatus))
         return
       }
+      const interpretedAsReminder = await scheduleReminderWithGemini(question)
+      if (interpretedAsReminder) return
       setVoiceStatus('בודק את היום שלך...')
       const response = await fetch(`${apiUrl}/api/assistant`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) })
       const data = await response.json()
@@ -148,19 +153,13 @@ function App() {
   return (
     <main className="app-shell" dir="rtl">
       <header className="topbar"><div className="brand-mark"><Sparkles size={18} /><span>תזכירי לי</span></div><div className="topbar-actions"><button className="icon-button" aria-label="התראות"><Bell size={19} /><i /></button><button className="avatar" aria-label="הפרופיל שלך">ג</button></div></header>
-      <section className="welcome-row"><div><p className="eyebrow">יום שלישי, 1 בספטמבר 2026</p><h1>בוקר טוב, גילעד</h1></div><button className="more-button" aria-label="אפשרויות נוספות"><MoreHorizontal size={22} /></button></section>
+      <section className="welcome-row"><div><p className="eyebrow">{new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p><h1>בוקר טוב, גילעד</h1></div><button className="more-button" aria-label="אפשרויות נוספות"><MoreHorizontal size={22} /></button></section>
       <section className="assistant-card"><div className="assistant-orbit"><Waves size={28} /></div><div className="assistant-copy"><span className="status-pill"><i /> העוזר שלך מוכן</span><h2>מה תרצה לדעת?</h2><p>שאל אותי על היום שלך, ואני אמצא את התשובה.</p><button className="scan-button" onClick={() => scanMailNotifications()}>סרוק התראות Outlook</button>{voiceStatus && <span className="voice-status">{voiceStatus}</span>}</div><button className={`mic-button ${isListening ? 'listening' : ''}`} onClick={askAssistant} aria-label={isListening ? 'עצור והשתמש בדיבור' : 'שאל את העוזר'}><Mic size={25} /></button></section>
       <nav className="day-tabs" aria-label="ניווט לפי יום">{['היום', 'מחר', 'השבוע'].map((tab) => <button key={tab} className={activeTab === tab ? 'active' : ''} onClick={() => { setActiveTab(tab); setActiveView('היום') }}>{tab}</button>)}</nav>
       <nav className="feature-tabs" aria-label="אזורי האפליקציה">
         {(['היום', 'קניות', 'Waze', 'מתוזמנות'] as const).map((view) => <button key={view} className={activeView === view ? 'active' : ''} onClick={() => setActiveView(view)}>{view === 'מתוזמנות' ? 'תזכורות מתוזמנות' : view}</button>)}
       </nav>
-      <section className="summary-strip"><div><strong>4</strong><span>משימות להיום</span></div><div><strong>2</strong><span>פגישות</span></div><div><strong>1</strong><span>דורש תשובה</span></div></section>
-      <section className="section-heading"><div><span className="section-kicker">הלו״ז שלך</span><h2>{activeTab === 'היום' ? 'מה מחכה לך היום' : activeTab === 'מחר' ? 'מחר בקצרה' : 'השבוע שלך'}</h2></div><button className="text-button">הכול <ChevronLeft size={16} /></button></section>
-      {activeView === 'היום' && <div className="timeline">
-        <article className={`timeline-item ${completed.includes(1) ? 'done' : ''}`}><div className="time">09:30</div><div className="timeline-line"><span className="dot blue" /></div><div className="item-body"><div className="item-top"><span className="type-label meeting"><CalendarDays size={14} /> פגישה</span><button onClick={() => toggleTask(1)} className="check-button" aria-label="סמן כבוצע"><Check size={15} /></button></div><h3>ישיבת צוות מוצר</h3><p><Clock3 size={14} /> 45 דקות <span>·</span> חדר ישיבות 2</p></div></article>
-        <article className={`timeline-item ${completed.includes(2) ? 'done' : ''}`}><div className="time">11:15</div><div className="timeline-line"><span className="dot orange" /></div><div className="item-body"><div className="item-top"><span className="type-label urgent"><Mail size={14} /> דורש תשובה</span><button onClick={() => toggleTask(2)} className="check-button" aria-label="סמן כבוצע"><Check size={15} /></button></div><h3>לחזור לדנה לגבי הצעת המחיר</h3><p>זוהה מתוך: “הצעת מחיר מעודכנת”</p></div></article>
-        <article className={`timeline-item ${completed.includes(3) ? 'done' : ''}`}><div className="time">13:00</div><div className="timeline-line"><span className="dot green" /></div><div className="item-body"><div className="item-top"><span className="type-label personal"><Zap size={14} /> משימה אישית</span><button onClick={() => toggleTask(3)} className="check-button" aria-label="סמן כבוצע"><Check size={15} /></button></div><h3>לאסוף את החבילה מהדואר</h3><p><MapPin size={14} /> בדרך הביתה</p></div></article>
-      </div>}
+      {activeView === 'היום' && aiTasks.length === 0 && aiMeetings.length === 0 && <section className="empty-state"><h2>אין עדיין נתוני יום</h2><p>סרוק התראות Outlook או אמור לי מה תרצה שאזכיר לך.</p></section>}
       {activeView === 'היום' && (aiTasks.length > 0 || aiMeetings.length > 0) && <section className="ai-insights"><h2>נמצא ב־Outlook</h2>{aiMeetings.map((meeting, index) => <div className="insight-row" key={`meeting-${index}`}><CalendarDays size={16} /><span>{meeting.title || 'פגישה'}<small>{meeting.start ? new Date(meeting.start).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : 'זמן לא צוין'}</small></span></div>)}{aiTasks.map((task, index) => <div className="insight-row" key={`task-${index}`}><Check size={16} /><span>{task.title || 'משימה'}<small>{task.source || 'מתוך מייל'}</small></span></div>)}</section>}
       {activeView === 'קניות' && <section className="feature-panel"><h2>רשימת הקניות</h2><p className="panel-hint">אמור: קניות חלב פלוס לחם</p>{shoppingItems.length ? shoppingItems.map((item, index) => <button className="list-row" key={`${item}-${index}`} onClick={() => setShoppingItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><ShoppingCart size={16} />{item}<Check size={15} /></button>) : <p className="empty-state">הרשימה ריקה כרגע</p>}</section>}
       {activeView === 'Waze' && <section className="feature-panel"><h2>יעדי Waze</h2><p className="panel-hint">אמור: Waze ליעד, והניווט ייפתח</p>{wazeDestinations.length ? wazeDestinations.map((destination) => <button className="list-row" key={destination} onClick={() => openWaze(destination)}><MapPin size={16} />{destination}<ChevronLeft size={15} /></button>) : <p className="empty-state">עדיין לא נבחר יעד</p>}</section>}
