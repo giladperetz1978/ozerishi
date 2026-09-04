@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <application android:theme="@style/AppTheme" android:label="OZERISHI" android:icon="@drawable/ozerishi_icon" android:roundIcon="@drawable/ozerishi_icon" android:allowBackup="false" android:supportsRtl="true">
+        <activity android:name=".AlarmActivity" android:screenOrientation="portrait" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true" android:excludeFromRecents="true" />
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" />
