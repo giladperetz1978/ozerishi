@@ -66,7 +66,10 @@ function App() {
       window.speechSynthesis?.speak(new SpeechSynthesisUtterance(data.answer || `התזכורת נקבעה ל־${when}`))
       return true
     } catch (error) {
-      setVoiceStatus(error instanceof Error ? error.message : 'לא הצלחתי לקבוע את התזכורת')
+      const message = error instanceof TypeError
+        ? 'שרת Gemini אינו נגיש. יש להפעיל את server על המחשב ולוודא שהטלפון מחובר לאותה רשת Wi-Fi.'
+        : error instanceof Error ? error.message : 'לא הצלחתי לקבוע את התזכורת'
+      setVoiceStatus(message)
       return true
     }
   }
